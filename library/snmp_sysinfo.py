@@ -151,8 +151,8 @@ def main():
             username  = dict(required=False),
             auth      = dict(required=False, choices=['md5', 'sha'], default='md5'),
             priv      = dict(required=False, choices=['des', 'aes'], default='des'),
-            authkey   = dict(required=False),
-            privkey   = dict(required=False),
+            authkey   = dict(required=False, no_log=True),
+            privkey   = dict(required=False, no_log=True),
 
             descr     = dict(required = False),
             contact   = dict(required = False),
