@@ -154,10 +154,10 @@ def main():
             authkey   = dict(required=False, no_log=True),
             privkey   = dict(required=False, no_log=True),
 
-            descr     = dict(required = False),
-            contact   = dict(required = False),
-            name      = dict(required = False),
-            location  = dict(required = False)
+            descr     = dict(required=False),
+            contact   = dict(required=False),
+            name      = dict(required=False),
+            location  = dict(required=False)
         ),
         mutually_exclusive=[['community', 'username']],
         required_one_of=[['version', 'community', 'username'],['descr', 'contact', 'name', 'location']],
@@ -214,10 +214,10 @@ def main():
             set_varbinds.append((cmdgen.MibVariable(oid_sys_location,), location))
    
     if len(set_varbinds) == 0:
-        module.exit_json(changed = False)
+        module.exit_json(changed=False)
 
     if module.check_mode:
-       module.exit_json(changed = True)
+       module.exit_json(changed=True)
 
     error_indication, error_status, error_index, varbinds = generator.setCmd(snmp_auth, transport, *set_varbinds)
 
@@ -226,7 +226,7 @@ def main():
     if error_status:
         module.fail_json(msg=error_status.prettyPrint())
 
-    module.exit_json(changed = True)
+    module.exit_json(changed=True)
 
 if __name__ == '__main__':
     main()
