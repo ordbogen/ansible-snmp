@@ -114,7 +114,6 @@ def snmp_get_auth(module):
         return cmdgen.CommunityData(community)
 
     # SNMPv3
-    username = params['username']
     if username is None:
         module.fail_json(msg='Username not set when using SNMP version 3')
 
