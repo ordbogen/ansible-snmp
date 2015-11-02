@@ -183,13 +183,13 @@ def main():
 
     get_varbinds = []
     if descr is not None:
-        get_varbinds.append(cmdgen.MibVariable(oid_sys_descr,))
+        get_varbinds.append(cmdgen.MibVariable(oid_sys_descr))
     if contact is not None:
-        get_varbinds.append(cmdgen.MibVariable(oid_sys_contact,))
+        get_varbinds.append(cmdgen.MibVariable(oid_sys_contact))
     if name is not None:
-        get_varbinds.append(cmdgen.MibVariable(oid_sys_name,))
+        get_varbinds.append(cmdgen.MibVariable(oid_sys_name))
     if location is not None:
-        get_varbinds.append(cmdgen.MibVariable(oid_sys_location,))
+        get_varbinds.append(cmdgen.MibVariable(oid_sys_location))
 
     transport = cmdgen.UdpTransportTarget((params['host'], 161))
     generator = cmdgen.CommandGenerator()
@@ -211,7 +211,7 @@ def main():
         elif cur_oid == oid_sys_name and name is not None and var != name:
             set_varbinds.append((cmdgen.MibVariable(oid_sys_name), name))
         elif cur_oid == oid_sys_location and location is not None and var != location:
-            set_varbinds.append((cmdgen.MibVariable(oid_sys_location,), location))
+            set_varbinds.append((cmdgen.MibVariable(oid_sys_location), location))
 
     if len(set_varbinds) == 0:
         module.exit_json(changed=False)
