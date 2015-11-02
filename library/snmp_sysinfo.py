@@ -100,22 +100,22 @@ def snmp_get_auth(module):
     community = params['community']
 
     # Detect version
-    if version == None:
-        if not username == None:
+    if version is None:
+        if username is not None:
             version = 'v3'
-        elif not community == None:
+        elif community is not None:
             version = 'v2c'
 
     # SNMPv1 and SNMPv2c
     if version == 'v2c' or version == 'v1':
-        if community == None:
+        if community is None:
             module.fail_json(msg='Community not set when using SNMP version 1/2c')
 
         return cmdgen.CommunityData(community)
 
     # SNMPv3
     username = params['username']
-    if username == None:
+    if username is None:
         module.fail_json(msg='Username not set when using SNMP version 3')
 
     authkey = params['authkey']
@@ -132,13 +132,13 @@ def snmp_get_auth(module):
         priv = cmdgen.usmDESPrivProtocol
 
     # noAuthNoPriv
-    if authkey == None:
+    if authkey is None:
         return cmdgen.UsmUserData(username)
 
     # authNoPriv
-    if privkey == None:
+    if privkey is None:
         return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth)
-    
+
     # authPriv
     return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth, privKey=privkey, privProtocol=priv)
 
@@ -182,13 +182,13 @@ def main():
     oid_sys_location = '1.3.6.1.2.1.1.6.0'
 
     get_varbinds = []
-    if not descr == None:
+    if descr is not None:
         get_varbinds.append(cmdgen.MibVariable(oid_sys_descr,))
-    if not contact == None:
+    if contact is not None:
         get_varbinds.append(cmdgen.MibVariable(oid_sys_contact,))
-    if not name == None:
+    if name is not None:
         get_varbinds.append(cmdgen.MibVariable(oid_sys_name,))
-    if not location == None:
+    if location is not None:
         get_varbinds.append(cmdgen.MibVariable(oid_sys_location,))
 
     transport = cmdgen.UdpTransportTarget((params['host'], 161))
@@ -204,15 +204,15 @@ def main():
     set_varbinds = []
     for oid, var in varbinds:
         cur_oid = oid.prettyPrint()
-        if cur_oid == oid_sys_descr and not descr == None and not var == descr:
-            set_varbinds.append((cmdgen.MibVariable(oid_sys_descr,), descr))
-        elif cur_oid == oid_sys_contact and not contact == None and not var == contact:
-            set_varbinds.append((cmdgen.MibVariable(oid_sys_contact,), contact))
-        elif cur_oid == oid_sys_name and not name == None and not var == name:
-            set_varbinds.append((cmdgen.MibVariable(oid_sys_name,), name))
-        elif cur_oid == oid_sys_location and not location == None and not var == location:
+        if cur_oid == oid_sys_descr and descr is not None and var != descr:
+            set_varbinds.append((cmdgen.MibVariable(oid_sys_descr), descr))
+        elif cur_oid == oid_sys_contact and contact is not None and var != contact:
+            set_varbinds.append((cmdgen.MibVariable(oid_sys_contact), contact))
+        elif cur_oid == oid_sys_name and name is not None and var != name:
+            set_varbinds.append((cmdgen.MibVariable(oid_sys_name), name))
+        elif cur_oid == oid_sys_location and location is not None and var != location:
             set_varbinds.append((cmdgen.MibVariable(oid_sys_location,), location))
-   
+
     if len(set_varbinds) == 0:
         module.exit_json(changed=False)
 
