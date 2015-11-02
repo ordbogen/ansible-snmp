@@ -88,9 +88,9 @@ options:
 from ansible.module_utils.basic import *
 try:
     from pysnmp.entity.rfc3413.oneliner import cmdgen
-    has_pysnmp = True
+    HAS_PYSNMP = True
 except:
-    has_pysnmp = False
+    HAS_PYSNMP = False
 
 def snmp_get_auth(module):
     params = module.params
@@ -164,9 +164,9 @@ def main():
         supports_check_mode=True
     )
 
-    if not has_pysnmp:
+    if not HAS_PYSNMP:
         module.fail_json(msg='Missing required pysnmp module')
-    
+
     snmp_auth = snmp_get_auth(module)
 
     params = module.params;
