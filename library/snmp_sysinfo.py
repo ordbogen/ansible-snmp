@@ -96,7 +96,7 @@ def snmp_get_auth(module):
     params = module.params
 
     version = params['version']
-    username = params['username']    
+    username = params['username']
     community = params['community']
 
     # Detect version
@@ -140,7 +140,8 @@ def snmp_get_auth(module):
         return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth)
 
     # authPriv
-    return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth, privKey=privkey, privProtocol=priv)
+    return cmdgen.UsmUserData(username, authKey=authkey, authProtocol=auth,
+                              privKey=privkey, privProtocol=priv)
 
 def main():
     module = AnsibleModule(
@@ -160,7 +161,8 @@ def main():
             location  = dict(required=False)
         ),
         mutually_exclusive=[['community', 'username']],
-        required_one_of=[['version', 'community', 'username'],['descr', 'contact', 'name', 'location']],
+        required_one_of=[['version', 'community', 'username'],
+                         ['descr', 'contact', 'name', 'location']],
         supports_check_mode=True
     )
 
@@ -169,7 +171,7 @@ def main():
 
     snmp_auth = snmp_get_auth(module)
 
-    params = module.params;
+    params = module.params
 
     descr = params['descr']
     contact = params['contact']
@@ -217,7 +219,7 @@ def main():
         module.exit_json(changed=False)
 
     if module.check_mode:
-       module.exit_json(changed=True)
+        module.exit_json(changed=True)
 
     error_indication, error_status, error_index, varbinds = generator.setCmd(snmp_auth, transport, *set_varbinds)
 
