@@ -89,7 +89,7 @@ from ansible.module_utils.basic import *
 try:
     from pysnmp.entity.rfc3413.oneliner import cmdgen
     HAS_PYSNMP = True
-except:
+except ImportError:
     HAS_PYSNMP = False
 
 def snmp_get_auth(module):
