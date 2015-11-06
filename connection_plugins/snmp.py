@@ -24,49 +24,62 @@ from ansible import utils
 from ansible.errors import AnsibleError
 from ansible.callbacks import vvv
 
+snmp_connection_cache = dict()
+
 class Connection(object):
     ''' SNMP based connections '''
 
     def __init__(self, runner, host, port, *args, **kwargs):
         self.runner = runner
         self.host = host
-        self.port = port
+        self.port = port if port else 161
         self.has_pipelining = False
-        self.snmp_fd = None
-        self.snmp_pid = None
-        pass
+        self.snmp_pipe_in = None
+        self.snmp_pipe_out = None
 
-    def _snmp_server(self, fd):
-        stream = os.popen(fd)
-        line = stream.readline()
-        stream.write(line)
+    def _snmp_server(self, pipe_in, pipe_out):
+        stream_in = os.fdopen(pipe_in, 'r')
+        stream_out = os.fdopen(pipe_out, 'w')
+        while True:
+            line = stream_in.getline()
+            if line is None:
+                break
+            stream_out.write(line)
 
     def connect(self, port=None):
-        pipe = os.pipe()
-        pid = os.fork()
-        if pid == 0:
-            os.close(pipe[0])
-            fd = os.open(os.devnull, os.O_RDWR)
-            if fd != 0:
-                os.dup2(fd, 0)
-            if fd != 1:
-                os.dup2(fd, 1)
-            if fd != 2:
-                os.dup2(fd, 2)
-            if fd not in (0, 1, 2):
-                os.close(fd)
+        key = self.host + ':' + str(self.port)
+        if key not in snmp_connection_cache:
+            pipe_to_server = os.pipe()
+            pipe_from_server = os.pipe()
+            pid = os.fork()
+            if pid == 0:
+                os.close(pipe_to_server[1])
+                os.close(pipe_from_server[0])
+                fd = os.open(os.devnull, os.O_RDWR)
+                if fd != 0:
+                    os.dup2(fd, 0)
+                if fd != 1:
+                    os.dup2(fd, 1)
+                if fd != 2:
+                    os.dup2(fd, 2)
+                if fd not in (0, 1, 2):
+                    os.close(fd)
 
-            os.setsid()
-            os.chdir('/')
+                os.setsid()
+                os.chdir('/')
 
-            self._snmp_server(pipe[1])
-            os._exit(0)
-        elif pid == -1:
-            raise errors.AnsibleError('Unable to fork')
-        else:
-            os.close(pipe[1])
-            self.snmp_fd = pipe[0]
-            self.snmp_pid = pid
+                self._snmp_server(pipe_to_server[0], pipe_from_server[1])
+                os._exit(0)
+            elif pid == -1:
+                raise errors.AnsibleError('Unable to fork')
+            else:
+                os.close(pipe_to_server[0])
+                os.close(pipe_from_server[1])
+
+                snmp_connection_cache[key] = (pipe_from_server[0], pipe_to_server[1])
+
+        self.snmp_pipe_in = snmp_connection_cache[key][0]
+        self.snmp_pipe_out = snmp_connection_cache[key][1]
         return self
 
     def exec_command(self, cmd, tmp_path, become_user=None, sudoable=False, executable='/bin/sh', in_data=None):
@@ -83,11 +96,11 @@ class Connection(object):
         executable = executable.split()[0] if executable else None
 
         env = os.environ
-        env['SNMP_FD'] = str(self.snmp_fd)
+        env['SNMP_PIPE_IN'] = str(self.snmp_pipe_in)
+        env['SNMP_PIPE_OUT'] = str(self.snmp_pipe_out)
 
         vvv('EXEC %s' % (local_cmd), host=self.host)
-        p = subprocess.Popen(
-                             local_cmd,
+        p = subprocess.Popen(local_cmd,
                              shell=isinstance(local_cmd, basestring),
                              cwd=self.runner.basedir,
                              executable=executable,
@@ -119,5 +132,4 @@ class Connection(object):
         self._transfer_file(in_path, out_path)
 
     def close(self):
-        os.close(self.snmp_fd)
-        os.waitpid(self.snmp_pid, 0)
+        pass
