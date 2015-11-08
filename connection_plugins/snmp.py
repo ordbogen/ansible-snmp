@@ -19,7 +19,6 @@
 import subprocess
 import shutil
 import os
-import getpass
 
 from ansible import utils, constants, errors
 from ansible.callbacks import vvv
@@ -41,55 +40,58 @@ class Connection(object):
         self.snmp_pipe_out = None
 
         p = constants.load_config_file()
-        self.snmp_auth_protocol = constants.get_config(p, 'snmp', 'auth_protocol', 'SNMP_AUTH_PROTOCOL', 'none').lower()
-        self.snmp_priv_protocol = constants.get_config(p, 'snmp', 'priv_protocol', 'SNMP_PRIV_PROTOCOL', 'none').lower()
-        self.snmp_engine_id     = constants.get_config(p, 'snmp', 'engine_id', 'SNMP_ENGINE_ID', None)
-        self.snmp_username      = constants.get_config(p, 'snmp', 'username', 'SNMP_USERNAME', None)
-        self.snmp_community     = constants.get_config(p, 'snmp', 'community', 'SNMP_COMMUNITY', None)
-        self.snmp_dual_key      = constants.get_config(p, 'snmp', 'dual_key', 'SNMP_DUAL_KEY', False, boolean=True)
+        self.SNMP_AUTH_PROTOCOL = constants.get_config(p, 'snmp', 'auth_protocol', 'SNMP_AUTH_PROTOCOL', 'none').lower()
+        self.SNMP_PRIV_PROTOCOL = constants.get_config(p, 'snmp', 'priv_protocol', 'SNMP_PRIV_PROTOCOL', 'none').lower()
+        self.SNMP_ENGINE_ID     = constants.get_config(p, 'snmp', 'engine_id', 'SNMP_ENGINE_ID', None)
+        self.SNMP_COMMUNITY     = constants.get_config(p, 'snmp', 'community', 'SNMP_COMMUNITY', None)
+        self.SNMP_AUTH_KEY      = constants.get_config(p, 'snmp', 'auth_key', 'SNMP_AUTH_KEY', None)
+        self.SNMP_PRIV_KEY      = constants.get_config(p, 'snmp', 'priv_key', 'SNMP_PRIV_KEY', None)
 
     def _get_snmp_auth(self):
-        if self.snmp_community is not None:
-            return cmdgen.CommunityData(self.snmp_community)
+        ''' Get SNMP auth object '''
 
-        if self.snmp_username is None:
-            raise errors.AnsibleError('Missing SNMP configuration parameter: username or community')
+        # If become_method is snmp we assume SNMPv3
+        if not self.runner.become or self.runner.become_method != 'snmp':
+            if self.SNMP_COMMUNITY is None:
+                raise errors.AnsibleError('Missing SNMP community or become_method is not snmp')
+
+            return cmdgen.CommunityData(self.SNMP_COMMUNITY)
+
+        if self.runner.become_user is None:
+            raise errors.AnsibleError('Missing become_user setting')
 
         # Authentication protocol
-        if self.snmp_auth_protocol == 'md5':
+        auth_key = self.SNMP_AUTH_KEY
+        if auth_key is None:
+            auth_key = self.runner.become_pass
+        if self.SNMP_AUTH_PROTOCOL == 'md5':
             auth_protocol = cmdgen.usmHMACMD5AuthProtocol
-        elif self.snmp_auth_protocol == 'sha':
+        elif self.SNMP_AUTH_PROTOCOL == 'sha':
             auth_protocol = cmdgen.usmHMACSHAAuthProtocol
-        elif self.snmp_auth_protocol == 'none':
+        elif self.SNMP_AUTH_PROTOCOL == 'none':
             auth_protocol = cmdgen.usmNoAuthProtocol
+            auth_key = None
         else:
-            raise errors.AnsibleError('Invalid SNMP authentication protocol: %s' % self.snmp_auth_protocol)
+            raise errors.AnsibleError('Unsupported SNMP authentication protocol: %s' % self.SNMP_AUTH_PROTOCOL)
 
         # Privacy protocol
-        if self.snmp_priv_protocol == 'des':
+        priv_key = self.SNMP_PRIV_KEY
+        if priv_key is None:
+            priv_key = self.runner.become_pass
+        if self.SNMP_PRIV_PROTOCOL == 'des':
             priv_protocol = cmdgen.usmDESPrivProtocol
-        elif self.snmp_priv_protocol == 'aes':
+        elif self.SNMP_PRIV_PROTOCOL == 'aes':
             priv_protocol = cmdgen.usmAesCfb128Protocol
-        elif self.snmp_priv_protocol == 'none':
+        elif self.SNMP_PRIV_PROTOCOL == 'none':
             priv_protocol = cmdgen.usmNoPrivProtocol
+            priv_key = None
         else:
-            raise errors.AnsibleError('Invalid SNMP privacy protocol: %s' % self.snmp_priv_protocol)
+            raise errors.AnsibleError('Unsupported SNMP privacy protocol: %s' % self.SNMP_PRIV_PROTOCOL)
 
-        # Keys
-        auth_key = None
-        priv_key = None
-        if not self.snmp_dual_key and auth_protocol != cmdgen.usmNoAuthProtocol and priv_protocol != cmdgen.usmNoPrivProtocol:
-            auth_key = priv_key = getpass.getpass('SNMP key: ')
-        else:
-            if auth_protocol != cmdgen.usmNoAuthProtocol:
-                auth_key = getpass.getpass('SNMP authentication key: ')
-            if priv_protocol != cmdgen.usmNoPrivProtocol:
-                priv_key = getpass.getpass('SNMP privacy key: ')
-
-        return cmdgen.UsmUserData(self.snmp_username,
+        return cmdgen.UsmUserData(self.runner.become_user,
                                   authProtocol=auth_protocol, authKey=auth_key,
                                   privProtocol=priv_protocol, privKey=priv_key,
-                                  securityEngineId=self.snmp_engine_id)
+                                  securityEngineId=self.SNMP_ENGINE_ID)
 
     def _snmp_server(self, pipe_in, pipe_out):
         transport = cmdgen.UdpTransportTarget((self.host, self.port))
@@ -146,9 +148,6 @@ class Connection(object):
         return self
 
     def exec_command(self, cmd, tmp_path, become_user=None, sudoable=False, executable='/bin/sh', in_data=None):
-        if sudoable and self.runner.become:
-            raise errors.AnsibleError('Internal Error: this modules does not support running commands via %s' % self.runner.become_method)
-
         if in_data:
             raise errors.AnsibleError('Internal Error: this modules does not support optimized module pipelining')
        
