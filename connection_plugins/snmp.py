@@ -19,11 +19,13 @@
 import subprocess
 import shutil
 import os
+import json
 
 from ansible import utils, constants, errors
 from ansible.callbacks import vvv
 from pysnmp.entity.rfc3413.oneliner import cmdgen
-from pyasn1.type import univ
+from pyasn1.type.univ import Integer, OctetString, ObjectIdentifier
+from pysnmp.proto.rfc1155 import IpAddress, Counter, Gauge, TimeTicks, Opaque
 
 snmp_connection_cache = dict()
 snmp_constants = None
@@ -94,19 +96,8 @@ class Connection(object):
                                   securityEngineId=self.SNMP_ENGINE_ID)
 
     def _snmp_server(self, pipe_in, pipe_out):
-        transport = cmdgen.UdpTransportTarget((self.host, self.port))
-        generator = cmdgen.CommandGenerator()
-
-        stream_in = os.fdopen(pipe_in, 'r')
-        stream_out = os.fdopen(pipe_out, 'w')
-        while True:
-            line = stream_in.getline()
-            if line is None:
-                break
-
-            # TODO
-
-            stream_out.write(line)
+        server = SnmpServer(pipe_in, pipe_out, self.host, self.port, self.snmp_auth)
+        server.run()
 
     def connect(self, port=None):
         key = self.host + ':' + str(port if port else self.port)
@@ -132,13 +123,12 @@ class Connection(object):
                 os.setsid()
                 os.chdir('/')
 
-                self._snmp_server(pipe_to_server[0], pipe_from_server[1])
+                server = SnmpServer(pipe_to_server[0], pipe_from_server[1], self.host, self.port, self.snmp_auth)
+                server.run()
                 os._exit(0)
             elif pid == -1:
                 raise errors.AnsibleError('Unable to fork')
             else:
-                os.close(pipe_to_server[0])
-                os.close(pipe_from_server[1])
                 self.snmp_auth = None
 
                 snmp_connection_cache[key] = (pipe_from_server[0], pipe_to_server[1])
@@ -204,18 +194,65 @@ class Connection(object):
     def close(self):
         pass
 
+class SnmpServer(object):
+    def __init__(self, pipe_in, pipe_out, host, port, auth):
+        self.stream_in = os.fdopen(pipe_in, 'r')
+        self.stream_out = os.fdopen(pipe_out, 'w')
+        self.host = host
+        self.port = port
+        self.auth = auth
+
+    def run(self):
+        while True:
+            line = self.stream_in.readline()
+            if line is None:
+                break
+
+            try:
+                request = json.loads(line);
+
+                method = getattr(self, request['method'])
+                result = method(*request['params'])
+
+                self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'result': result, 'id': request['id']}) + '\n')
+                self.stream_out.flush()
+            except BaseException as e:
+                self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'error': {'code': -32603, 'message': str(e)}, 'id': request['id']}) + '\n')
+                self.stream_out.flush()
+
+    def get(self, var_names):
+        return 'get result'
+
+    def set(self, var_binds):
+        return 'set result'
+
+    def walk(self, var_names):
+        return 'walk result'
+
+class SnmpException(BaseException):
+    pass
+
 class SnmpClient(object):
     """ SNMP API for the modules """
 
     def __init__(self):
-        self.fd_in = int(os.getenv('SNMP_PIPE_IN'))
-        self.fd_out = int(os.getenv('SNMP_PIPE_OUT'))
+        self.stream_in = os.fdopen(int(os.getenv('SNMP_PIPE_IN')), 'r')
+        self.stream_out = os.fdopen(int(os.getenv('SNMP_PIPE_OUT')), 'w')
 
-    def get(var_names):
-        pass
+    def _call(self, method, params):
+        self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 1}) + '\n')
+        self.stream_out.flush()
+        result = json.loads(self.stream_in.readline())
+        if 'error' in result:
+            raise SnmpException(result['error']['message'])
+        return result['result']
 
-    def set(var_binds):
-        pass
+    def get(self, var_names):
+        return self._call('get', [var_names])
 
-    def walk(var_names):
-        pass
+    def set(self, var_binds):
+        return self._call('set', [var_binds])
+
+    def walk(self, var_names):
+        return self._call('walk', [var_names])
+
