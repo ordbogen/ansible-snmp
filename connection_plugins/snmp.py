@@ -157,9 +157,17 @@ class Connection(object):
             local_cmd = cmd
         executable = executable.split()[0] if executable else None
 
-        env = os.environ
+        # os.environ is special, so we copy it into a dictionary and modify the dictionary instead
+        env = dict()
+        for key in os.environ.keys():
+            env[key] = os.environ[key]
         env['SNMP_PIPE_IN'] = str(self.snmp_pipe_in)
         env['SNMP_PIPE_OUT'] = str(self.snmp_pipe_out)
+
+        if 'PYTHONPATH' in env:
+            env['PYTHONPATH'] = os.path.dirname(__file__) + ':' + env['PYTHONPATH']
+        else:
+            env['PYTHONPATH'] = os.path.dirname(__file__)
 
         vvv('EXEC %s' % (local_cmd), host=self.host)
         p = subprocess.Popen(local_cmd,
@@ -194,4 +202,20 @@ class Connection(object):
         self._transfer_file(in_path, out_path)
 
     def close(self):
+        pass
+
+class SnmpClient(object):
+    """ SNMP API for the modules """
+
+    def __init__(self):
+        self.fd_in = int(os.getenv('SNMP_PIPE_IN'))
+        self.fd_out = int(os.getenv('SNMP_PIPE_OUT'))
+
+    def get(var_names):
+        pass
+
+    def set(var_binds):
+        pass
+
+    def walk(var_names):
         pass
