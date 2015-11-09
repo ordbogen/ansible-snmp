@@ -29,7 +29,7 @@ snmp_connection_cache = dict()
 snmp_constants = None
 
 class Connection(object):
-    ''' SNMP based connections '''
+    """ SNMP based connections """
 
     def __init__(self, runner, host, port, *args, **kwargs):
         self.runner = runner
@@ -48,7 +48,7 @@ class Connection(object):
         self.SNMP_PRIV_KEY      = constants.get_config(p, 'snmp', 'priv_key', 'SNMP_PRIV_KEY', None)
 
     def _get_snmp_auth(self):
-        ''' Get SNMP auth object '''
+        """ Get SNMP auth object """
 
         # If become_method is snmp we assume SNMPv3
         if not self.runner.become or self.runner.become_method != 'snmp':
@@ -182,7 +182,7 @@ class Connection(object):
         return (p.returncode, '', stdout, stderr)
 
     def _transfer_file(self, in_path, out_path):
-        ''' transfer a file from local to local '''
+        """ transfer a file from local to local """
         if not os.path.exists(in_path):
             raise errors.AnsibleFileNotFound('file or modules does not exist: %s' % in_path)
 
