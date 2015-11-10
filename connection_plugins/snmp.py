@@ -19,7 +19,8 @@
 import subprocess
 import shutil
 import os
-import json
+import pickle
+import struct
 
 from ansible import utils, constants, errors
 from ansible.callbacks import vvv
@@ -194,31 +195,47 @@ class Connection(object):
     def close(self):
         pass
 
-class SnmpServer(object):
-    def __init__(self, pipe_in, pipe_out, host, port, auth):
-        self.stream_in = os.fdopen(pipe_in, 'r')
-        self.stream_out = os.fdopen(pipe_out, 'w')
+class SnmpException(BaseException):
+    pass
+
+class SnmpPeer(object):
+    def __init__(self, fd_in, fd_out):
+        self.fd_in = fd_in
+        self.fd_out = fd_out
+
+    def _send(self, data):
+        payload = pickle.dumps(data)
+        header = struct.pack('=L', len(payload))
+        os.write(self.fd_out, header)
+        os.write(self.fd_out, payload)
+
+    def _recv(self):
+        header = os.read(self.fd_in, 4)
+        length, = struct.unpack('=L', header)
+        payload = os.read(self.fd_in, length)
+        return pickle.loads(payload)
+
+class SnmpServer(SnmpPeer):
+    def __init__(self, fd_in, fd_out, host, port, auth):
+        super(SnmpServer, self).__init__(fd_in, fd_out)
         self.host = host
         self.port = port
         self.auth = auth
 
     def run(self):
         while True:
-            line = self.stream_in.readline()
-            if line is None:
-                break
+            request = self._recv()
 
+            method_name = request[0]
+            params = request[1]
+
+            method = getattr(self, method_name)
             try:
-                request = json.loads(line);
-
-                method = getattr(self, request['method'])
-                result = method(*request['params'])
-
-                self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'result': result, 'id': request['id']}) + '\n')
-                self.stream_out.flush()
+                result = method(*params)
             except BaseException as e:
-                self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'error': {'code': -32603, 'message': str(e)}, 'id': request['id']}) + '\n')
-                self.stream_out.flush()
+                result = e
+
+            self._send(result)
 
     def get(self, var_names):
         return 'get result'
@@ -229,23 +246,20 @@ class SnmpServer(object):
     def walk(self, var_names):
         return 'walk result'
 
-class SnmpException(BaseException):
-    pass
-
-class SnmpClient(object):
+class SnmpClient(SnmpPeer):
     """ SNMP API for the modules """
 
     def __init__(self):
-        self.stream_in = os.fdopen(int(os.getenv('SNMP_PIPE_IN')), 'r')
-        self.stream_out = os.fdopen(int(os.getenv('SNMP_PIPE_OUT')), 'w')
+        super(SnmpClient, self).__init__(int(os.getenv('SNMP_PIPE_IN')), int(os.getenv('SNMP_PIPE_OUT')))
 
     def _call(self, method, params):
-        self.stream_out.write(json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 1}) + '\n')
-        self.stream_out.flush()
-        result = json.loads(self.stream_in.readline())
-        if 'error' in result:
-            raise SnmpException(result['error']['message'])
-        return result['result']
+        self._send((method, params))
+        result = self._recv()
+
+        if isinstance(result, BaseException):
+            raise result
+
+        return result
 
     def get(self, var_names):
         return self._call('get', [var_names])
