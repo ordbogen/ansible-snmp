@@ -19,14 +19,21 @@
 import subprocess
 import shutil
 import os
-import pickle
-import struct
+import json
+import syslog
+import traceback
+import base64
 
 from ansible import utils, constants, errors
 from ansible.callbacks import vvv
 from pysnmp.entity.rfc3413.oneliner import cmdgen
-from pyasn1.type.univ import Integer, OctetString, ObjectIdentifier
-from pysnmp.proto.rfc1155 import IpAddress, Counter, Gauge, TimeTicks, Opaque
+from pysnmp.entity.rfc3413.oneliner import mibvar
+from pysnmp.proto import rfc1902
+from pysnmp.proto import rfc1905
+
+__all__ = ['Connection',
+           'SnmpValue', 'OctetString', 'ObjectIdentifier', 'Integer32', 'Counter32', 'IpAddress', 'Gauge32', 'TimeTicks', 'Opaque', 'Counter64',
+           'SnmpPeer', 'SnmpClient']
 
 snmp_connection_cache = dict()
 snmp_constants = None
@@ -39,8 +46,6 @@ class Connection(object):
         self.host = host
         self.port = port if port else 161
         self.has_pipelining = False
-        self.snmp_pipe_in = None
-        self.snmp_pipe_out = None
 
         p = constants.load_config_file()
         self.SNMP_AUTH_PROTOCOL = constants.get_config(p, 'snmp', 'auth_protocol', 'SNMP_AUTH_PROTOCOL', 'none').lower()
@@ -107,6 +112,7 @@ class Connection(object):
 
             pipe_to_server = os.pipe()
             pipe_from_server = os.pipe()
+
             pid = os.fork()
             if pid == 0:
                 os.close(pipe_to_server[1])
@@ -198,53 +204,215 @@ class Connection(object):
 class SnmpException(BaseException):
     pass
 
+class SnmpValue(object):
+    def __str__(self):
+        return str(self.value)
+
+class OctetString(SnmpValue):
+    def __init__(self, value):
+        self.value = str(value)
+
+class ObjectIdentifier(SnmpValue):
+    def __init__(self, value):
+        subids = []
+        for subid in str(value).split('.'):
+            subids.append(str(int(subid)))
+        self.value = '.'.join(subids)
+
+class Integer32(SnmpValue):
+    pass
+
+class Counter32(SnmpValue):
+    pass
+
+class IpAddress(SnmpValue):
+    pass
+
+class Gauge32(SnmpValue):
+    pass
+
+class TimeTicks(SnmpValue):
+    pass
+
+class Opaque(SnmpValue):
+    pass
+
+class Counter64(SnmpValue):
+    pass
+
 class SnmpPeer(object):
     def __init__(self, fd_in, fd_out):
-        self.fd_in = fd_in
-        self.fd_out = fd_out
+        self.stream_in = os.fdopen(fd_in, 'rU')
+        self.stream_out = os.fdopen(fd_out, 'w')
 
     def _send(self, data):
-        payload = pickle.dumps(data)
-        header = struct.pack('=L', len(payload))
-        os.write(self.fd_out, header)
-        os.write(self.fd_out, payload)
+        line = '%s\n' % json.dumps(data, default=self._default_hook)
+        syslog.syslog('_send: %s' % line)
+        self.stream_out.write(line)
+        self.stream_out.flush()
 
     def _recv(self):
-        header = os.read(self.fd_in, 4)
-        length, = struct.unpack('=L', header)
-        payload = os.read(self.fd_in, length)
-        return pickle.loads(payload)
+        line = self.stream_in.readline()
+        syslog.syslog('_recv: %s' % line)
+        return json.loads(line, object_hook=self._object_hook)
+
+    def _default_hook(self, o):
+        if isinstance(o, OctetString):
+            return dict(__jsonclass__=['OctetString', base64.b64encode(o.value)])
+        if isinstance(o, Opaque):
+            return dict(__jsonclass__=['Opaque', self._default_hook(o.value)])
+        if isinstance(o, NoSuchObject):
+            return None
+        if isinstance(o, NoSuchInstance):
+            return None
+        if isinstance(o, EndOfMibView):
+            return None
+        if isinstance(o, SnmpValue):
+            return dict(__jsonclass__=[type(o).__name__, o.value])
+        raise ValueError('Unsupported object type')
+
+    def _object_hook(self, o):
+        if not isinstance(o, dict):
+            return o
+        if '__jsonclass__' in o:
+            data = o['__jsonclass__']
+            constructor = data[0]
+            if constructor == 'OctetString':
+                return OctetString(base64.b64decode(data[1]))
+            if constructor == 'ObjectIdentifier':
+                return ObjectIdentifier(data[1])
+            if constructor == 'Integer32':
+                return Integer32(data[1])
+            if constructor == 'IpAddress':
+                return IpAddress(data[1])
+            if constructor == 'Gauge32':
+                return Gauge32(data[1])
+            if constructor == 'TimeTicks':
+                return TimeTicks(data[1])
+            if constructor == 'Opaque':
+                return Opaque(self._object_hook(data[1]))
+            if constructor == 'Counter64':
+                return Counter64(data[1])
+            raise ValueError('Unsupported object type')
+        return o
 
 class SnmpServer(SnmpPeer):
     def __init__(self, fd_in, fd_out, host, port, auth):
         super(SnmpServer, self).__init__(fd_in, fd_out)
-        self.host = host
-        self.port = port
         self.auth = auth
+        self.transport = cmdgen.UdpTransportTarget((host, port))
+        self.generator = cmdgen.CommandGenerator()
 
     def run(self):
-        while True:
-            request = self._recv()
+        try:
+            while True:
+                request = self._recv()
 
-            method_name = request[0]
-            params = request[1]
+                method_name = request['method']
+                params = request['params']
 
-            method = getattr(self, method_name)
-            try:
-                result = method(*params)
-            except BaseException as e:
-                result = e
+                method = getattr(self, method_name)
+                try:
+                    result = method(*params)
+                    self._send(dict(jsonrpc='2.0', result=result, id=request['id']))
+                except BaseException as e:
+                    trace = traceback.format_exc().splitlines()
+                    syslog.syslog(str(e))
+                    for line in trace:
+                        syslog.syslog(line)
+                    self._send(dict(jsonrpc='2.0', error=dict(code=0, message=str(e)), id=request['id']))
+        except BaseException as e:
+            trace = traceback.format_exc().splitlines()
+            syslog.syslog(str(e))
+            for line in trace:
+                syslog.syslog(trace)
 
-            self._send(result)
+    def _to_pysnmp(self, value):
+        """ Convert connection plugin object into pysnmp objects """
+        if value is None:
+            return None
+        if isinstance(value, OctetString):
+            return rfc1902.OctetString(str(value.value))
+        if isinstance(value, ObjectIdentifier):
+            return rfc1902.ObjectName(str(value.value))
+        if isinstance(value, Integer32):
+            return rfc1902.Integer32(int(value.value))
+        if isinstance(value, Counter32):
+            return rfc1902.Counter32(long(value.value))
+        if isinstance(value, IpAddress):
+            return rfc1902.IpAddress(str(value.value))
+        if isinstance(value, Gauge32):
+            return rfc1902.Gauge32(long(value.value))
+        if isinstance(value, TimeTicks):
+            return rfc1902.TimeTicks(long(value.value))
+        if isinstance(value, Opaque):
+            return rfc1902.Opaque(value.value) # FIXME
+        if isinstance(value, Counter64):
+            return rfc1902.Counter64(str(value.value))
+        raise SnmpException('Invalid type: %s' % type(value).__name__)
 
-    def get(self, var_names):
-        return 'get result'
+    def _from_pysnmp(self, value):
+        """ Convert pysnmp objects into connection plugin objects """
+        if value is None:
+            return None
+        if isinstance(value, rfc1902.OctetString):
+            return OctetString(str(value))
+        if isinstance(value, rfc1902.ObjectName):
+            return ObjectIdentifier(str(value))
+        if isinstance(value, rfc1902.Integer32):
+            return Integer32(int(value))
+        if isinstance(value, rfc1902.Counter32):
+            return Counter32(long(value))
+        if isinstance(value, rfc1902.IpAddress):
+            return IpAddress(str(value))
+        if isinstance(value, rfc1902.Gauge32):
+            return Gauge32(long(value))
+        if isinstance(value, rfc1902.TimeTicks):
+            return TimeTicks(long(value))
+        if isinstance(value, Opaque):
+            return Opaque(str(value)) # FIXME
+        if isinstance(value, rfc1905.NoSuchObject):
+            return None
+        if isinstance(value, rfc1905.NoSuchInstance):
+            return None
+        if isinstance(value, rfc1905.EndOfMibView):
+            return None
+        raise SnmpException('Invalid type: %s' % type(value).__name__)
+
+    def get(self, *object_ids):
+        """ Fetch SNMP variables """
+        var_names = []
+        for object_id in object_ids:
+            var_names.append(rfc1902.ObjectName(str(object_id)))
+        error_indication, error_status, error_index, varbinds = self.generator.getCmd(self.auth, self.transport, *var_names)
+
+        if error_indication:
+            raise SnmpException(error_indication)
+        if error_status:
+            raise SnmpException(error_status.prettyPrint())
+
+        res = list()
+        for varbind in varbinds:
+            res.append(self._from_pysnmp(varbind[1]))
+
+        return res
 
     def set(self, var_binds):
-        return 'set result'
+        """ Set SNMP variables """
+        pysnmp_var_binds = []
+        for object_id, value in var_binds.items():
+            pysnmp_var_binds.append((rfc1902.ObjectName(str(object_id)), self._to_pysnmp(value)))
+        error_indication, error_status, error_index, varbinds = self.generator.setCmd(self.auth, self.transport, *pysnmp_var_binds)
+
+        if error_indication:
+            raise SnmpException(error_indication)
+        if error_status:
+            raise SnmpException(error_status.prettyPrint())
 
     def walk(self, var_names):
-        return 'walk result'
+        """ Iterate SNMP variables """
+        # TODO
+        return None
 
 class SnmpClient(SnmpPeer):
     """ SNMP API for the modules """
@@ -252,21 +420,27 @@ class SnmpClient(SnmpPeer):
     def __init__(self):
         super(SnmpClient, self).__init__(int(os.getenv('SNMP_PIPE_IN')), int(os.getenv('SNMP_PIPE_OUT')))
 
-    def _call(self, method, params):
-        self._send((method, params))
+    def _call(self, method, *params):
+        self._send(dict(jsonrpc='2.0', method=method, params=params, id=1))
         result = self._recv()
 
-        if isinstance(result, BaseException):
-            raise result
+        if 'error' in result:
+            raise SnmpException(result['error']['message'])
 
-        return result
+        if 'result' in result:
+            return result['result']
 
-    def get(self, var_names):
-        return self._call('get', [var_names])
+        return None
+
+    def get(self, *var_names):
+        """ Fetch SNMP variables """
+        return self._call('get', *var_names)
 
     def set(self, var_binds):
-        return self._call('set', [var_binds])
+        """ Set SNMP variables """
+        self._call('set', var_binds)
 
-    def walk(self, var_names):
-        return self._call('walk', [var_names])
+    def walk(self, *var_names):
+        """ Iterate SNMP variables """
+        return self._call('walk', *var_names)
 
