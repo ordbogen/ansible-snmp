@@ -33,7 +33,7 @@ from pysnmp.proto import rfc1905
 
 __all__ = ['Connection',
            'SnmpValue', 'OctetString', 'ObjectIdentifier', 'Integer32', 'Counter32', 'IpAddress', 'Gauge32', 'TimeTicks', 'Opaque', 'Counter64',
-           'SnmpPeer', 'SnmpClient', 'SnmpError']
+           'SnmpClient', 'SnmpError']
 
 snmp_connection_cache = dict()
 snmp_constants = None
@@ -101,10 +101,6 @@ class Connection(object):
                                   privProtocol=priv_protocol, privKey=priv_key,
                                   securityEngineId=self.SNMP_ENGINE_ID)
 
-    def _snmp_server(self, pipe_in, pipe_out):
-        server = SnmpServer(pipe_in, pipe_out, self.host, self.port, self.snmp_auth)
-        server.run()
-
     def connect(self, port=None):
         key = self.host + ':' + str(port if port else self.port)
         if key not in snmp_connection_cache:
@@ -130,7 +126,7 @@ class Connection(object):
                 os.setsid()
                 os.chdir('/')
 
-                server = SnmpServer(pipe_to_server[0], pipe_from_server[1], self.host, self.port, self.snmp_auth)
+                server = _SnmpServer(pipe_to_server[0], pipe_from_server[1], self.host, self.port, self.snmp_auth)
                 server.run()
                 os._exit(0)
             elif pid == -1:
@@ -240,7 +236,7 @@ class Opaque(SnmpValue):
 class Counter64(SnmpValue):
     pass
 
-class SnmpPeer(object):
+class _SnmpPeer(object):
     def __init__(self, fd_in, fd_out):
         self.stream_in = os.fdopen(fd_in, 'rU')
         self.stream_out = os.fdopen(fd_out, 'w')
@@ -296,9 +292,9 @@ class SnmpPeer(object):
             raise ValueError('Unsupported object type')
         return o
 
-class SnmpServer(SnmpPeer):
+class _SnmpServer(_SnmpPeer):
     def __init__(self, fd_in, fd_out, host, port, auth):
-        super(SnmpServer, self).__init__(fd_in, fd_out)
+        super(_SnmpServer, self).__init__(fd_in, fd_out)
         self.auth = auth
         self.transport = cmdgen.UdpTransportTarget((host, port))
         self.generator = cmdgen.CommandGenerator()
@@ -414,7 +410,7 @@ class SnmpServer(SnmpPeer):
         # TODO
         return None
 
-class SnmpClient(SnmpPeer):
+class SnmpClient(_SnmpPeer):
     """ SNMP API for the modules """
 
     def __init__(self):
