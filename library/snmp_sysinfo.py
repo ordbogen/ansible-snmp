@@ -114,7 +114,7 @@ def main():
 
         client.set(var_binds)
         module.exit_json(changed=True)
-    except snmp.SnmpException as e:
+    except snmp.SnmpError as e:
         module.fail_json(msg=str(e))
 
 if __name__ == '__main__':

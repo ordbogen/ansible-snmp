@@ -33,7 +33,7 @@ from pysnmp.proto import rfc1905
 
 __all__ = ['Connection',
            'SnmpValue', 'OctetString', 'ObjectIdentifier', 'Integer32', 'Counter32', 'IpAddress', 'Gauge32', 'TimeTicks', 'Opaque', 'Counter64',
-           'SnmpPeer', 'SnmpClient']
+           'SnmpPeer', 'SnmpClient', 'SnmpError']
 
 snmp_connection_cache = dict()
 snmp_constants = None
@@ -201,7 +201,7 @@ class Connection(object):
     def close(self):
         pass
 
-class SnmpException(BaseException):
+class SnmpError(Exception):
     pass
 
 class SnmpValue(object):
@@ -315,13 +315,13 @@ class SnmpServer(SnmpPeer):
                 try:
                     result = method(*params)
                     self._send(dict(jsonrpc='2.0', result=result, id=request['id']))
-                except BaseException as e:
+                except Exception as e:
                     trace = traceback.format_exc().splitlines()
                     syslog.syslog(str(e))
                     for line in trace:
                         syslog.syslog(line)
                     self._send(dict(jsonrpc='2.0', error=dict(code=0, message=str(e)), id=request['id']))
-        except BaseException as e:
+        except Exception as e:
             trace = traceback.format_exc().splitlines()
             syslog.syslog(str(e))
             for line in trace:
@@ -349,7 +349,7 @@ class SnmpServer(SnmpPeer):
             return rfc1902.Opaque(value.value) # FIXME
         if isinstance(value, Counter64):
             return rfc1902.Counter64(str(value.value))
-        raise SnmpException('Invalid type: %s' % type(value).__name__)
+        raise SnmpError('Invalid type: %s' % type(value).__name__)
 
     def _from_pysnmp(self, value):
         """ Convert pysnmp objects into connection plugin objects """
@@ -377,7 +377,7 @@ class SnmpServer(SnmpPeer):
             return None
         if isinstance(value, rfc1905.EndOfMibView):
             return None
-        raise SnmpException('Invalid type: %s' % type(value).__name__)
+        raise SnmpError('Invalid type: %s' % type(value).__name__)
 
     def get(self, *object_ids):
         """ Fetch SNMP variables """
@@ -387,9 +387,9 @@ class SnmpServer(SnmpPeer):
         error_indication, error_status, error_index, varbinds = self.generator.getCmd(self.auth, self.transport, *var_names)
 
         if error_indication:
-            raise SnmpException(error_indication)
+            raise SnmpError(error_indication)
         if error_status:
-            raise SnmpException(error_status.prettyPrint())
+            raise SnmpError(error_status.prettyPrint())
 
         res = list()
         for varbind in varbinds:
@@ -405,9 +405,9 @@ class SnmpServer(SnmpPeer):
         error_indication, error_status, error_index, varbinds = self.generator.setCmd(self.auth, self.transport, *pysnmp_var_binds)
 
         if error_indication:
-            raise SnmpException(error_indication)
+            raise SnmpError(error_indication)
         if error_status:
-            raise SnmpException(error_status.prettyPrint())
+            raise SnmpError(error_status.prettyPrint())
 
     def walk(self, var_names):
         """ Iterate SNMP variables """
@@ -425,7 +425,7 @@ class SnmpClient(SnmpPeer):
         result = self._recv()
 
         if 'error' in result:
-            raise SnmpException(result['error']['message'])
+            raise SnmpError(result['error']['message'])
 
         if 'result' in result:
             return result['result']
