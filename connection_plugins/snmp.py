@@ -36,7 +36,14 @@ __all__ = ['Connection',
            'SnmpClient', 'SnmpError']
 
 snmp_connection_cache = dict()
-snmp_constants = None
+
+p = constants.load_config_file()
+SNMP_AUTH_PROTOCOL = constants.get_config(p, 'snmp', 'auth_protocol', 'SNMP_AUTH_PROTOCOL', 'none').lower()
+SNMP_PRIV_PROTOCOL = constants.get_config(p, 'snmp', 'priv_protocol', 'SNMP_PRIV_PROTOCOL', 'none').lower()
+SNMP_ENGINE_ID     = constants.get_config(p, 'snmp', 'engine_id', 'SNMP_ENGINE_ID', None)
+SNMP_COMMUNITY     = constants.get_config(p, 'snmp', 'community', 'SNMP_COMMUNITY', None)
+SNMP_AUTH_KEY      = constants.get_config(p, 'snmp', 'auth_key', 'SNMP_AUTH_KEY', None)
+SNMP_PRIV_KEY      = constants.get_config(p, 'snmp', 'priv_key', 'SNMP_PRIV_KEY', None)
 
 class Connection(object):
     """ SNMP based connections """
@@ -47,59 +54,52 @@ class Connection(object):
         self.port = port if port else 161
         self.has_pipelining = False
 
-        p = constants.load_config_file()
-        self.SNMP_AUTH_PROTOCOL = constants.get_config(p, 'snmp', 'auth_protocol', 'SNMP_AUTH_PROTOCOL', 'none').lower()
-        self.SNMP_PRIV_PROTOCOL = constants.get_config(p, 'snmp', 'priv_protocol', 'SNMP_PRIV_PROTOCOL', 'none').lower()
-        self.SNMP_ENGINE_ID     = constants.get_config(p, 'snmp', 'engine_id', 'SNMP_ENGINE_ID', None)
-        self.SNMP_COMMUNITY     = constants.get_config(p, 'snmp', 'community', 'SNMP_COMMUNITY', None)
-        self.SNMP_AUTH_KEY      = constants.get_config(p, 'snmp', 'auth_key', 'SNMP_AUTH_KEY', None)
-        self.SNMP_PRIV_KEY      = constants.get_config(p, 'snmp', 'priv_key', 'SNMP_PRIV_KEY', None)
 
     def _get_snmp_auth(self):
         """ Get SNMP auth object """
 
         # If become_method is snmp we assume SNMPv3
         if not self.runner.become or self.runner.become_method != 'snmp':
-            if self.SNMP_COMMUNITY is None:
+            if SNMP_COMMUNITY is None:
                 raise errors.AnsibleError('Missing SNMP community or become_method is not snmp')
 
-            return cmdgen.CommunityData(self.SNMP_COMMUNITY)
+            return cmdgen.CommunityData(SNMP_COMMUNITY)
 
         if self.runner.become_user is None:
             raise errors.AnsibleError('Missing become_user setting')
 
         # Authentication protocol
-        auth_key = self.SNMP_AUTH_KEY
+        auth_key = SNMP_AUTH_KEY
         if auth_key is None:
             auth_key = self.runner.become_pass
-        if self.SNMP_AUTH_PROTOCOL == 'md5':
+        if SNMP_AUTH_PROTOCOL == 'md5':
             auth_protocol = cmdgen.usmHMACMD5AuthProtocol
-        elif self.SNMP_AUTH_PROTOCOL == 'sha':
+        elif SNMP_AUTH_PROTOCOL == 'sha':
             auth_protocol = cmdgen.usmHMACSHAAuthProtocol
-        elif self.SNMP_AUTH_PROTOCOL == 'none':
+        elif SNMP_AUTH_PROTOCOL == 'none':
             auth_protocol = cmdgen.usmNoAuthProtocol
             auth_key = None
         else:
-            raise errors.AnsibleError('Unsupported SNMP authentication protocol: %s' % self.SNMP_AUTH_PROTOCOL)
+            raise errors.AnsibleError('Unsupported SNMP authentication protocol: %s' % SNMP_AUTH_PROTOCOL)
 
         # Privacy protocol
-        priv_key = self.SNMP_PRIV_KEY
+        priv_key = SNMP_PRIV_KEY
         if priv_key is None:
             priv_key = self.runner.become_pass
-        if self.SNMP_PRIV_PROTOCOL == 'des':
+        if SNMP_PRIV_PROTOCOL == 'des':
             priv_protocol = cmdgen.usmDESPrivProtocol
-        elif self.SNMP_PRIV_PROTOCOL == 'aes':
+        elif SNMP_PRIV_PROTOCOL == 'aes':
             priv_protocol = cmdgen.usmAesCfb128Protocol
-        elif self.SNMP_PRIV_PROTOCOL == 'none':
+        elif SNMP_PRIV_PROTOCOL == 'none':
             priv_protocol = cmdgen.usmNoPrivProtocol
             priv_key = None
         else:
-            raise errors.AnsibleError('Unsupported SNMP privacy protocol: %s' % self.SNMP_PRIV_PROTOCOL)
+            raise errors.AnsibleError('Unsupported SNMP privacy protocol: %s' % SNMP_PRIV_PROTOCOL)
 
         return cmdgen.UsmUserData(self.runner.become_user,
                                   authProtocol=auth_protocol, authKey=auth_key,
                                   privProtocol=priv_protocol, privKey=priv_key,
-                                  securityEngineId=self.SNMP_ENGINE_ID)
+                                  securityEngineId=SNMP_ENGINE_ID)
 
     def connect(self, port=None):
         key = self.host + ':' + str(port if port else self.port)
