@@ -70,7 +70,7 @@ def main():
     name = params['name']
     location = params['location']
 
-    var_names = [];
+    var_names = []
     if descr is not None:
         var_names.append(OID_SYS_DESCR)
     if contact is not None:
