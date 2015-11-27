@@ -197,7 +197,7 @@ class Connection(object):
         self._transfer_file(in_path, out_path)
 
     def close(self):
-       pass
+        pass
 
 class _SnmpConnection(object):
     def __init__(self, host, port, auth):
