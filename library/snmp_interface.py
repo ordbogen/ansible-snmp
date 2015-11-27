@@ -144,25 +144,25 @@ def main():
         if status:
             if_status = int(values[oid_if_admin_status])
             if status == 'up' and if_status != IF_ADMIN_STATUS_UP:
-                var_binds[oid_if_admin_status] = IF_ADMIN_STATUS_UP
+                var_binds[oid_if_admin_status] = snmp.Integer32(IF_ADMIN_STATUS_UP)
             elif status == 'down' and if_status != IF_ADMIN_STATUS_DOWN:
-                var_binds[oid_if_admin_status] = IF_ADMIN_STATUS_DOWN
+                var_binds[oid_if_admin_status] = snmp.Integer32(IF_ADMIN_STATUS_DOWN)
 
         if traps:
             traps = module.boolean(traps)
             if_link_up_down_trap_enable = int(values[oid_if_link_up_down_trap_enable])
             if traps and if_link_up_down_trap_enable != IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED:
-                var_binds[oid_if_link_up_down_trap_enable] = IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED
+                var_binds[oid_if_link_up_down_trap_enable] = snmp.Integer32(IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED)
             elif not traps and if_link_up_down_trap_enable != IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED:
-                var_binds[oid_if_link_up_down_trap_enable] = IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED
+                var_binds[oid_if_link_up_down_trap_enable] = snmp.Integer32(IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED)
 
         if promisc:
             promisc = module.boolean(promisc)
             if_promiscuous_mode = int(values[oid_if_promiscuous_mode])
             if promisc and if_promiscuous_mode != SNMP_TRUE:
-                var_binds[oid_if_promiscuous_mode] = SNMP_TRUE
+                var_binds[oid_if_promiscuous_mode] = snmp.Integer32(SNMP_TRUE)
             elif not promisc and if_promiscuous_mode != SNMP_FALSE:
-                var_binds[oid_if_promiscuous_mode] = SNMP_FALSE
+                var_binds[oid_if_promiscuous_mode] = snmp.Integer32(SNMP_FALSE)
 
         if not var_binds:
             module.exit_json(changed=False)
