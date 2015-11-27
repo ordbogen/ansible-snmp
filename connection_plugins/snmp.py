@@ -439,7 +439,7 @@ class _Server(_JsonRpcPeer):
     def _on_rpc_get(self, handle, error_indication, error_status, error_index, var_binds, ctx):
         id = ctx
         if error_indication:
-            self._send_error(id, error_indication)
+            self._send_error(id, str(error_indication))
         elif error_status:
             self._send_error(id, error_status.prettyPrint())
         else:
@@ -458,7 +458,7 @@ class _Server(_JsonRpcPeer):
     def _on_rpc_set(self, handle, error_indication, error_status, error_index, var_binds, ctx):
         id = ctx
         if error_indication:
-            self._send_error(id, error_indication)
+            self._send_error(id, str(error_indication))
         elif error_status:
             self._send_error(id, error_status.prettyPrint())
         else:
@@ -474,7 +474,7 @@ class _Server(_JsonRpcPeer):
     def _on_rpc_walk(self, handle, error_indication, error_status, error_index, var_bind_table, ctx):
         (id, request_object_id, res) = ctx
         if error_indication:
-            self._send_error(id, error_indication)
+            self._send_error(id, str(error_indication))
         elif error_status:
             self._send_error(id, error_status.prettyPrint())
         else:
