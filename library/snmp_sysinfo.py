@@ -86,22 +86,22 @@ def main():
 
         var_binds = dict()
 
-        if descr is not None:
+        if descr:
             value = str(values.pop(0))
             if value != descr:
                 var_binds[OID_SYS_DESCR] = snmp.OctetString(descr)
 
-        if contact is not None:
+        if contact:
             value = str(values.pop(0))
             if value != contact:
                 var_binds[OID_SYS_CONTACT] = snmp.OctetString(contact)
 
-        if name is not None:
+        if name:
             value = str(values.pop(0))
             if value != name:
                 var_binds[OID_SYS_NAME] = snmp.OctetString(name)
 
-        if location is not None:
+        if location:
             value = str(values.pop(0))
             if value != name:
                 var_binds[OID_SYS_LOCATION] = snmp.OctetString(name)
