@@ -168,7 +168,7 @@ def main():
             module.exit_json(changed=False)
 
         if module.check_mode:
-            module.exit_json(changed=True, var_binds=var_binds.keys())
+            module.exit_json(changed=True)
 
         client.set(var_binds)
         module.exit_json(changed=True)
