@@ -25,11 +25,11 @@ description:
     - Requires the snmp connection plugin
 author: "Peter Nørlund, @pchri03"
 options:
-    name:
+    ifname:
         description:
             - Interface name
         required: false
-    index:
+    ifindex:
         description:
             - Interface index
         required: false
@@ -85,24 +85,24 @@ def get_ifindex(client, name):
 def main():
     module = AnsibleModule(
         argument_spec = dict(
-            name      = dict(required=False),
-            index     = dict(required=False),
+            ifname      = dict(required=False),
+            ifindex     = dict(required=False),
 
             alias     = dict(required=False),
             status     = dict(required=False, choices=['up', 'down']),
             traps     = dict(required=False, choices=BOOLEANS),
             promisc   = dict(required=False, choices=BOOLEANS)
         ),
-        mutually_exclusive=[['name', 'index']],
-        required_one_of=[['name', 'index'],
+        mutually_exclusive=[['ifname', 'ifindex']],
+        required_one_of=[['ifname', 'ifindex'],
                          ['alias', 'status', 'traps', 'promisc']],
         supports_check_mode=True
     )
 
     params = module.params
 
-    name = params['name']
-    index = params['index']
+    ifname = params['ifname']
+    ifindex = params['ifindex']
     alias = params['alias']
     status = params['status']
     traps = params['traps']
@@ -111,15 +111,15 @@ def main():
     try:
         client = snmp.SnmpClient()
 
-        if not index:
-            index = get_ifindex(client, name)
-            if not index:
+        if not ifindex:
+            ifindex = get_ifindex(client, ifname)
+            if not ifindex:
                 module.fail_json(msg="No such interface")
 
-        oid_if_alias = OID_IF_ALIAS + '.' + str(index)
-        oid_if_admin_status = OID_IF_ADMIN_STATUS + '.' + str(index)
-        oid_if_link_up_down_trap_enable = OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(index)
-        oid_if_promiscuous_mode = OID_IF_PROMISCUOUS_MODE + '.' + str(index)
+        oid_if_alias = OID_IF_ALIAS + '.' + str(ifindex)
+        oid_if_admin_status = OID_IF_ADMIN_STATUS + '.' + str(ifindex)
+        oid_if_link_up_down_trap_enable = OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(ifindex)
+        oid_if_promiscuous_mode = OID_IF_PROMISCUOUS_MODE + '.' + str(ifindex)
 
         var_names = []
         if alias is not None:
