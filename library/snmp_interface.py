@@ -117,47 +117,52 @@ def main():
             if not index:
                 module.fail_json(msg="No such interface")
 
+        oid_if_alias = OID_IF_ALIAS + '.' + str(index)
+        oid_if_admin_status = OID_IF_ADMIN_STATUS + '.' + str(index)
+        oid_if_link_up_down_trap_enable = OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(index)
+        oid_if_promiscuous_mode = OID_IF_PROMISCUOUS_MODE + '.' + str(index)
+
         var_names = []
         if alias is not None:
-            var_names.append(OID_IF_ALIAS + '.' + str(index))
+            var_names.append(oid_if_alias)
         if status is not None:
-            var_names.append(OID_IF_ADMIN_STATUS + '.' + str(index))
+            var_names.append(oid_if_admin_status)
         if traps is not None:
-            var_names.append(OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(index))
+            var_names.append(oid_if_link_up_down_trap_enable)
         if promisc is not None:
-            var_names.append(OID_IF_PROMISCUOUS_MODE + '.' + str(index))
+            var_names.append(oid_if_promiscuous_mode)
 
         values = client.get(*var_names)
 
         var_binds = dict()
 
         if alias:
-            value = str(values.pop(0))
+            value = str(values[oid_if_alias])
             if value != alias:
-                var_binds[OID_IF_ALIAS + '.' + str(index)] = snmp.OctetString(alias)
+                var_binds[oid_if_alias] = snmp.OctetString(alias)
 
         if status:
-            if_status = int(values.pop(0))
+            if_status = int(values[oid_if_admin_status])
             if status == 'up' and if_status != IF_ADMIN_STATUS_UP:
-                var_binds[OIF_IF_ADMIN_STATUS + '.' + str(index)] = IF_ADMIN_STATUS_UP
+                var_binds[oid_if_admin_status] = IF_ADMIN_STATUS_UP
             elif status == 'down' and if_status != IF_ADMIN_STATUS_DOWN:
-                var_binds[OID_IF_ADMIN_STATUS + '.' + str(index)] = IF_ADMIN_STATUS_DOWN
+                var_binds[oid_if_admin_status] = IF_ADMIN_STATUS_DOWN
 
         if traps:
             traps = module.boolean(traps)
-            if_link_up_down_trap_enable = int(values.pop(0))
+            if_link_up_down_trap_enable = int(values[oid_if_link_up_down_trap_enable])
             if traps and if_link_up_down_trap_enable != IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED:
-                var_binds[OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(index)] = IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED
+                var_binds[oid_if_link_up_down_trap_enable] = IF_LINK_UP_DOWN_TRAP_ENABLE_ENABLED
             elif not traps and if_link_up_down_trap_enable != IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED:
-                var_binds[OID_IF_LINK_UP_DOWN_TRAP_ENABLE + '.' + str(index)] = IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED
+                var_binds[oid_if_link_up_down_trap_enable] = IF_LINK_UP_DOWN_TRAP_ENABLE_DISABLED
 
         if promisc:
             promisc = module.boolean(promisc)
-            if_promiscuous_mode = int(values.pop(0))
+            if_promiscuous_mode = int(values[oid_if_promiscuous_mode])
             if promisc and if_promiscuous_mode != SNMP_TRUE:
-                var_binds[OID_IF_PROMISCUOUS_MODE + '.' + str(index)] = SNMP_TRUE
+                var_binds[oid_if_promiscuous_mode] = SNMP_TRUE
             elif not promisc and if_promiscuous_mode != SNMP_FALSE:
-                var_binds[OID_IF_PROMISCUOUS_MODE + '.' + str(index)] = SNMP_FALSE
+                var_binds[oid_if_promiscuous_mode] = SNMP_FALSE
 
         if not var_binds:
             module.exit_json(changed=False)

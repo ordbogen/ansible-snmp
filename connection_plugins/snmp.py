@@ -443,9 +443,10 @@ class _Server(_JsonRpcPeer):
         elif error_status:
             self._send_error(id, error_status.prettyPrint())
         else:
-            res = []
+            res = dict()
             for var_bind in var_binds:
-                res.append(self._from_pysnmp(var_bind[1]))
+                object_id = str(self._from_pysnmp(var_bind[0]))
+                res[object_id] = self._from_pysnmp(var_bind[1])
             self._send_result(id, res)
 
     def rpc_set(self, id, var_binds):
