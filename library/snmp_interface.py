@@ -18,13 +18,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 DOCUMENTATION='''
-module: snmp_sysinfo
-short_description: Set basic system info through SNMP
+module: snmp_interface
+short_description: Set interface settings through SNMP
 description:
-    - Set basic system info through SNMP
+    - Set interface settings through SNMP
+    - Requires the snmp connection plugin
 author: "Peter Nørlund, @pchri03"
-requirements:
-    - pysnmp
 options:
     name:
         description:
