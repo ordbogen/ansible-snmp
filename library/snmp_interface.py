@@ -170,6 +170,7 @@ def main():
         if module.check_mode:
             module.exit_json(changed=True, var_binds=var_binds.keys())
 
+        client.set(var_binds)
         module.exit_json(changed=True)
     except snmp.SnmpError as e:
         module.fail_json(msg=str(e))
