@@ -36,6 +36,7 @@ from pysnmp.entity.rfc3413.oneliner import mibvar
 from pysnmp.entity import engine
 from pysnmp.proto import rfc1902
 from pysnmp.proto import rfc1905
+from pyasn1.type import univ
 from pysnmp.carrier.asynsock.dgram import udp
 
 __all__ = ['Connection',
@@ -213,6 +214,9 @@ class _SnmpConnection(object):
     def set(self, var_binds, callback):
         self.generator.setCmd(self.auth, self.transport, var_binds, callback)
 
+    def get_bulk(self, var_names, callback, non_repeaters=0, max_repetitions=10):
+        self.generator.bulkCmd(self.auth, self.transport, non_repeaters, max_repetitions, var_names, callback)
+
 class _BufferedDispatcher(asyncore.file_dispatcher):
     def __init__(self, fd, map=None):
         asyncore.file_dispatcher.__init__(self, fd, map)
@@ -316,15 +320,11 @@ class _JsonRpcPeer(object):
             return dict(__jsonclass__=['OctetString', base64.b64encode(o.value)])
         if isinstance(o, Opaque):
             return dict(__jsonclass__=['Opaque', self._default_hook(o.value)])
-        if isinstance(o, NoSuchObject):
-            return None
-        if isinstance(o, NoSuchInstance):
-            return None
-        if isinstance(o, EndOfMibView):
-            return None
+        if isinstance(o, Integer32):
+            return dict(__jsonclass__=['Integer32', o.value])
         if isinstance(o, SnmpValue):
             return dict(__jsonclass__=[type(o).__name__, o.value])
-        raise ValueError('Unsupported object type')
+        raise ValueError('Unsupported object type: %s' % o.__class__.__name__)
 
     def _object_hook(self, o):
         """ Convert JSON data into objects """
@@ -349,7 +349,7 @@ class _JsonRpcPeer(object):
                 return Opaque(self._object_hook(data[1]))
             if constructor == 'Counter64':
                 return Counter64(data[1])
-            raise ValueError('Unsupported object type')
+            raise ValueError('Unsupported object type: %s' % constructor)
         return o
 
 class _Server(_JsonRpcPeer):
@@ -400,7 +400,7 @@ class _Server(_JsonRpcPeer):
             return rfc1902.Opaque(value.value) # FIXME
         if isinstance(value, Counter64):
             return rfc1902.Counter64(str(value.value))
-        raise SnmpError('Invalid type: %s' % type(value).__name__)
+        raise SnmpError('Invalid type: %s' % value.__class__.__name__)
 
     def _from_pysnmp(self, value):
         """ Convert pysnmp objects into connection plugin objects """
@@ -410,7 +410,7 @@ class _Server(_JsonRpcPeer):
             return OctetString(str(value))
         if isinstance(value, rfc1902.ObjectName):
             return ObjectIdentifier(str(value))
-        if isinstance(value, rfc1902.Integer32):
+        if isinstance(value, univ.Integer):
             return Integer32(int(value))
         if isinstance(value, rfc1902.Counter32):
             return Counter32(long(value))
@@ -420,7 +420,7 @@ class _Server(_JsonRpcPeer):
             return Gauge32(long(value))
         if isinstance(value, rfc1902.TimeTicks):
             return TimeTicks(long(value))
-        if isinstance(value, Opaque):
+        if isinstance(value, rfc1902.Opaque):
             return Opaque(str(value)) # FIXME
         if isinstance(value, rfc1905.NoSuchObject):
             return None
@@ -436,7 +436,8 @@ class _Server(_JsonRpcPeer):
             pysnmp_var_names.append(rfc1902.ObjectName(str(object_id)))
         self._conn.get(pysnmp_var_names, (self._on_rpc_get, id))
 
-    def _on_rpc_get(self, handle, error_indication, error_status, error_index, var_binds, id):
+    def _on_rpc_get(self, handle, error_indication, error_status, error_index, var_binds, ctx):
+        id = ctx
         if error_indication:
             self._send_error(id, error_indication)
         elif error_status:
@@ -453,7 +454,8 @@ class _Server(_JsonRpcPeer):
             pysnmp_var_binds.append((rfc1902.ObjectName(str(object_id)), self._to_pysnmp(value)))
         self._conn.set(pysnmp_var_binds, (self._on_rpc_set, id))
 
-    def _on_rpc_set(self, handle, error_indication, error_status, error_index, var_binds, id):
+    def _on_rpc_set(self, handle, error_indication, error_status, error_index, var_binds, ctx):
+        id = ctx
         if error_indication:
             self._send_error(id, error_indication)
         elif error_status:
@@ -461,13 +463,45 @@ class _Server(_JsonRpcPeer):
         else:
             self._send_result(id, None)
 
-    def rpc_walk(self, id, var_names):
-        self._send_result(id, None)
+    def rpc_walk(self, id, object_id):
+        self._do_rpc_walk(id, str(object_id), str(object_id), dict())
+
+    def _do_rpc_walk(self, id, request_object_id, object_id, res):
+        pysnmp_var_names = [rfc1902.ObjectName(object_id)]
+        self._conn.get_bulk(pysnmp_var_names, (self._on_rpc_walk, (id, request_object_id, res)))
+
+    def _on_rpc_walk(self, handle, error_indication, error_status, error_index, var_bind_table, ctx):
+        (id, request_object_id, res) = ctx
+        if error_indication:
+            self._send_error(id, error_indication)
+        elif error_status:
+            self._send_error(id, error_status.prettyPrint())
+        else:
+            prefix_len = len(request_object_id)
+            last_object_id = None
+            for var_binds in var_bind_table:
+                for var_bind in var_binds:
+                    object_id = str(self._from_pysnmp(var_bind[0]))
+                    if object_id[:prefix_len] != request_object_id:
+                        self._send_result(id, res)
+                        return
+
+                    idx = object_id[(prefix_len + 1):]
+                    res[idx] = self._from_pysnmp(var_bind[1])
+                    last_object_id = object_id
+
+            if last_object_id is None:
+                self._send_result(id, res)
+            else:
+                self._do_rpc_walk(id, request_object_id, last_object_id, res)
 
 class SnmpError(Exception):
     pass
 
 class SnmpValue(object):
+    def __init__(self, value):
+        self.value = value
+
     def __str__(self):
         return str(self.value)
 
@@ -483,10 +517,24 @@ class ObjectIdentifier(SnmpValue):
         self.value = '.'.join(subids)
 
 class Integer32(SnmpValue):
-    pass
+    def __init__(self, value):
+        self.value = int(value)
+
+    def __int__(self):
+        return self.value
+
+    def __long__(self):
+        return self.value
 
 class Counter32(SnmpValue):
-    pass
+    def __init__(self, value):
+        self.value = long(value)
+
+    def __int__(self):
+        return self.value
+
+    def __long__(self):
+        return self.value
 
 class IpAddress(SnmpValue):
     pass
@@ -535,7 +583,7 @@ class SnmpClient(_JsonRpcPeer):
         """ Set SNMP variables """
         self._call('set', var_binds)
 
-    def walk(self, *var_names):
+    def walk(self, var_name):
         """ Iterate SNMP variables """
-        return self._call('walk', *var_names)
+        return self._call('walk', var_name)
 
