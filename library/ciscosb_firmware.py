@@ -161,7 +161,7 @@ def main():
             client.set(var_binds)
  
         if gather_facts:
-            module.exit_json(changed=changed, facts=facts)
+            module.exit_json(changed=changed, ansible_facts=facts)
         else:
             module.exit_json(changed=changed)
 
