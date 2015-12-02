@@ -23,7 +23,7 @@ short_description: Set active firmware on CiscoSB switches
 description:
     - Set active firmware
     - Requires the snmp connection plugin
-author: "Peter Nørlund, pchri03"
+author: "Peter Nørlund, @pchri03"
 options:
     version:
         description:
