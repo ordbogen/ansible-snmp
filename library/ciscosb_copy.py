@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-DOCUMENATION = """
+DOCUMENTATION = """
 module: ciscosb_copy
 short_description: Copy files to/from CiscoSB switches
 description:
@@ -27,29 +27,18 @@ author: "Peter Nørlund, @pchri03"
 options:
     src:
         description:
-            - URL to copy from. Supports multiple URL schemes:
-            - local:///runnning-config
-            - local:///startup-config
-            - local:///backup-config
-            - local:///image
-            - local:///boot
-            - local:///logging
-            - local:///mirror-config
-            - another-unit://UNIT/PATH where UNIT is the unit number in a multi stack environmenent and PATH is the same kind of path as with local://
-            - tftp://IP/FILE
-            - scp://IP/FILE
-            - http://IP/FILE
-            - https://IP/FILE
+            - URL to copy from. Supports multiple URL schemes
         required: true
     dest:
         description:
             - URL to copy to. See src
         required: true
-    secure-data:
+    secure_data:
         description:
             - Specify how to handle secure data
         choices: [ 'exclude', 'include-encrypted', 'include-decrypted', 'default' ]
-        default: default
+        default: 'default'
+        required: false
 """
 
 import snmp
