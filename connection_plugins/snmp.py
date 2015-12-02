@@ -32,7 +32,7 @@ from ansible import utils, constants, errors
 from ansible.callbacks import vvv
 from pysnmp.carrier.asynsock import dispatch
 from pysnmp.entity.rfc3413.oneliner import cmdgen
-from pysnmp.entity.rfc3413.oneliner import mibvar
+from pysnmp.entity.rfc3413 import mibvar
 from pysnmp.entity import engine
 from pysnmp.proto import rfc1902
 from pysnmp.proto import rfc1905
@@ -107,7 +107,7 @@ class Connection(object):
         return cmdgen.UsmUserData(self.runner.become_user,
                                   authProtocol=auth_protocol, authKey=auth_key,
                                   privProtocol=priv_protocol, privKey=priv_key,
-                                  securityEngineId=SNMP_ENGINE_ID)
+                                  contextEngineId=SNMP_ENGINE_ID)
 
     def _get_snmp_connection(self):
         key = '%s:%d' % (self.host, self.port)
